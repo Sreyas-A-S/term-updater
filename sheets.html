@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spreadsheet Filter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        /* Custom font for a clean look */
+        body {
+            font-family: "Inter", sans-serif;
+        }
+        /* Basic styling for the message box */
+        .message-box {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-top: 1rem;
+            text-align: center;
+        }
+        .message-box.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .message-box.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .message-box.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-2xl border border-gray-200">
+        <h1 class="text-4xl font-extrabold text-center text-gray-800 mb-8">
+            <span class="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600">
+                Spreadsheet Filter
+            </span>
+        </h1>
+
+        <div class="mb-6">
+            <label for="excelFile" class="block text-gray-700 text-lg font-semibold mb-2">
+                Upload File (.xlsx, .xls, .csv):
+            </label>
+            <input
+                type="file"
+                id="excelFile"
+                accept=".xlsx, .xls, .csv"
+                class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-500 file:text-white hover:file:bg-blue-600 transition duration-200"
+            />
+            <p class="text-sm text-gray-500 mt-2">
+                Tip: Download Google Sheets as .xlsx or .csv
+            </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div>
+                <label for="columnName" class="block text-gray-700 text-lg font-semibold mb-2">
+                    Filter Column Name:
+                </label>
+                <input
+                    type="text"
+                    id="columnName"
+                    placeholder="e.g., 'Category'"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200 text-gray-800 placeholder-gray-400"
+                />
+            </div>
+            <div>
+                <label for="filterValue" class="block text-gray-700 text-lg font-semibold mb-2">
+                    Value to Match:
+                </label>
+                <input
+                    type="text"
+                    id="filterValue"
+                    placeholder="e.g., 'Electronics'"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200 text-gray-800 placeholder-gray-400"
+                />
+            </div>
+        </div>
+
+        <button
+            id="filterButton"
+            class="w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:from-blue-600 hover:to-indigo-700 transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-blue-300"
+        >
+            Filter & Generate File
+        </button>
+
+        <div id="messageBox" class="message-box hidden"></div>
+
+        <div class="mt-8 text-center">
+            <a
+                id="downloadLink"
+                class="hidden inline-block bg-green-500 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-600 transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-green-300"
+                download="filtered_data.xlsx"
+            >
+                Download Filtered File
+            </a>
+        </div>
+    </div>
+
+    <script>
+        // Helper function to convert string to ArrayBuffer for XLSX.write
+        function s2ab(s) {
+            const buf = new ArrayBuffer(s.length);
+            const view = new Uint8Array(buf);
+            for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xFF;
+            return buf;
+        }
+
+        // Get references to HTML elements
+        const excelFileInput = document.getElementById('excelFile');
+        const columnNameInput = document.getElementById('columnName');
+        const filterValueInput = document.getElementById('filterValue');
+        const filterButton = document.getElementById('filterButton');
+        const messageBox = document.getElementById('messageBox');
+        const downloadLink = document.getElementById('downloadLink');
+
+        let uploadedFile = null; // To store the uploaded file
+
+        // Event listener for file input change
+        excelFileInput.addEventListener('change', (event) => {
+            uploadedFile = event.target.files[0];
+            if (uploadedFile) {
+                showMessage('File selected: ' + uploadedFile.name, 'info');
+                downloadLink.classList.add('hidden'); // Hide download link if a new file is chosen
+            } else {
+                showMessage('No file selected.', 'error');
+            }
+        });
+
+        // Event listener for the filter button click
+        filterButton.addEventListener('click', () => {
+            filterExcel();
+        });
+
+        /**
+         * Displays a message in the message box.
+         * @param {string} message - The message to display.
+         * @param {'success'|'error'|'info'} type - The type of message (for styling).
+         */
+        function showMessage(message, type) {
+            messageBox.textContent = message;
+            messageBox.className = `message-box ${type}`; // Reset classes and apply new ones
+            messageBox.classList.remove('hidden');
+        }
+
+        /**
+         * Filters the uploaded Excel file based on column name and value,
+         * then generates and provides a download link for the new Excel file.
+         */
+        function filterExcel() {
+            if (!uploadedFile) {
+                showMessage('Upload a file first.', 'error');
+                return;
+            }
+
+            const columnName = columnNameInput.value.trim();
+            const filterValue = filterValueInput.value.trim();
+
+            if (!columnName) {
+                showMessage('Enter column name.', 'error');
+                return;
+            }
+            if (!filterValue) {
+                showMessage('Enter value to match.', 'error');
+                return;
+            }
+
+            showMessage('Processing...', 'info');
+            downloadLink.classList.add('hidden'); // Hide download link during processing
+
+            const reader = new FileReader();
+
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    // Determine file type based on extension for more robust reading
+                    const fileName = uploadedFile.name.toLowerCase();
+                    let readType = 'array';
+                    if (fileName.endsWith('.csv')) {
+                        readType = 'string'; // CSVs are read as strings
+                    }
+
+                    // Read the workbook
+                    const workbook = XLSX.read(data, { type: readType });
+
+                    // Assuming the first sheet is the one to process
+                    const sheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+
+                    // Convert sheet to JSON array of arrays (AoA)
+                    // header: 1 means the first row is used as headers
+                    let jsonSheet = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+                    if (jsonSheet.length === 0) {
+                        showMessage('File empty or unreadable.', 'error');
+                        return;
+                    }
+
+                    // --- Merged Cell Handling (only applies to XLSX/XLS files) ---
+                    // If there are merged cells, propagate their values to all covered cells
+                    if (worksheet['!merges'] && !fileName.endsWith('.csv')) { // Only process merges if not CSV
+                        worksheet['!merges'].forEach(merge => {
+                            const startRow = merge.s.r;
+                            const startCol = merge.s.c;
+                            const endRow = merge.e.r;
+                            const endCol = merge.e.c;
+
+                            // Get the value from the top-left cell of the merged range
+                            const mergedValue = jsonSheet[startRow] && jsonSheet[startRow][startCol] !== undefined
+                                ? jsonSheet[startRow][startCol]
+                                : undefined;
+
+                            // Propagate this value to all cells within the merged range
+                            for (let r = startRow; r <= endRow; r++) {
+                                // Ensure the row exists
+                                if (!jsonSheet[r]) {
+                                    jsonSheet[r] = [];
+                                }
+                                for (let c = startCol; c <= endCol; c++) {
+                                    // Only overwrite if the cell is currently empty/undefined
+                                    // This prevents overwriting explicit values in non-merged cells within the range
+                                    if (jsonSheet[r][c] === undefined || jsonSheet[r][c] === null || jsonSheet[r][c] === '') {
+                                        jsonSheet[r][c] = mergedValue;
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    // --- End Merged Cell Handling ---
+
+                    // The first row is assumed to be headers
+                    let headers = jsonSheet[0];
+                    let rows = jsonSheet.slice(1); // Actual data rows
+
+                    // Find the index of the column to filter by (case-insensitive)
+                    const columnIndex = headers.findIndex(header =>
+                        typeof header === 'string' && header.trim().toLowerCase() === columnName.toLowerCase()
+                    );
+
+                    if (columnIndex === -1) {
+                        showMessage(`Column '${columnName}' not found.`, 'error');
+                        return;
+                    }
+
+                    // Filter the rows and store original index
+                    const filteredRowsWithIndex = [];
+                    rows.forEach((row, index) => {
+                        // Original row index (1-based, accounting for header row)
+                        const originalRowIndex = index + 2; // +1 for 0-based to 1-based, +1 for header row
+
+                        if (row.length > columnIndex) {
+                            const cellValue = String(row[columnIndex] || '').trim();
+                            if (cellValue.toLowerCase() === filterValue.toLowerCase()) {
+                                // Add the original index as a new element to the row
+                                const newRow = [...row, originalRowIndex];
+                                filteredRowsWithIndex.push(newRow);
+                            }
+                        }
+                    });
+
+                    // Add "Original Index" to the headers
+                    headers = [...headers, "Original Index"];
+
+                    // Combine headers and filtered data
+                    const finalData = [headers, ...filteredRowsWithIndex];
+
+                    if (filteredRowsWithIndex.length === 0) {
+                        showMessage(`No matches found.`, 'info');
+                        return;
+                    }
+
+                    // Create a new worksheet from the filtered data
+                    const newWorksheet = XLSX.utils.aoa_to_sheet(finalData);
+
+                    // Create a new workbook
+                    const newWorkbook = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Filtered Data");
+
+                    // Write the workbook to a binary string
+                    const outputBookType = fileName.endsWith('.csv') ? 'csv' : 'xlsx';
+                    const outputFileName = `filtered_spreadsheet_by_${columnName}.${outputBookType}`;
+
+                    const wbout = XLSX.write(newWorkbook, { bookType: outputBookType, type: 'binary' });
+
+                    // Create a Blob and a download link
+                    const blob = new Blob([s2ab(wbout)], { type: "application/octet-stream" });
+                    const url = URL.createObjectURL(blob);
+
+                    downloadLink.href = url;
+                    downloadLink.download = outputFileName;
+                    downloadLink.classList.remove('hidden');
+                    showMessage('Filtered successfully! Download below.', 'success');
+
+                } catch (error) {
+                    console.error("Error processing spreadsheet file:", error);
+                    showMessage('Error processing file. Check format.', 'error');
+                }
+            };
+
+            reader.onerror = (error) => {
+                console.error("FileReader error:", error);
+                showMessage('Error reading file. Please try again.', 'error');
+            };
+
+            // For CSV, read as text; for others, read as array buffer
+            if (uploadedFile.name.toLowerCase().endsWith('.csv')) {
+                reader.readAsText(uploadedFile);
+            } else {
+                reader.readAsArrayBuffer(uploadedFile);
+            }
+        }
+    </script>
+</body>
+</html>
