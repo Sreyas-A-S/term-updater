@@ -56,10 +56,44 @@
         .animate-spin {
             animation: spin 1s linear infinite;
         }
+
+        /* Custom styles for the export table container */
+        .export-table-container {
+            height: 100%; /* Ensure it takes full height of its flex parent */
+            overflow-y: auto; /* Enable vertical scrolling */
+            border: 1px solid #e2e8f0; /* Light gray border */
+            border-radius: 0.5rem; /* Rounded corners */
+            background-color: #f9fafb; /* Light background */
+        }
+
+        /* Styles for the table itself */
+        .export-table {
+            width: 100%; /* Full width within its container */
+            border-collapse: collapse; /* Collapse borders between cells */
+        }
+
+        .export-table th, .export-table td {
+            padding: 0.75rem; /* Padding for cells */
+            text-align: left; /* Align text to the left */
+            border-bottom: 1px solid #e2e8f0; /* Bottom border for rows */
+        }
+
+        .export-table th {
+            background-color: #edf2f7; /* Slightly darker background for headers */
+            font-weight: 600; /* Semi-bold font for headers */
+            color: #4a5568; /* Darker text for headers */
+            position: sticky; /* Sticky header for scrolling content */
+            top: 0;
+            z-index: 10; /* Ensure header stays on top */
+        }
+
+        .export-table tr:last-child td {
+            border-bottom: none; /* No bottom border for the last row */
+        }
     </style>
 </head>
 <body class="bg-gray-100 flex justify-center items-center min-h-screen font-sans">
-    <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-4xl mx-4 my-8 flex flex-col md:flex-row gap-8">
+    <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-6xl mx-4 my-8 flex flex-col md:flex-row gap-8 max-h-[calc(80vh-4rem)] overflow-y-auto">
 
         <div class="flex-1 flex flex-col justify-between">
             <div class="mb-6">
@@ -79,7 +113,7 @@
             </button>
 
             <button id="transferButton"
-                    class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-75 transition duration-200 ease-in-out mb-6 w-full">
+                    class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-75 transition duration-200 ease-in-out mb-4 w-full">
                 Transfer Value
             </button>
 
@@ -88,8 +122,7 @@
                 Export to Excel
             </button>
 
-            <div class="flex justify-center space-x-4 mt-auto">
-                <button id="undoButton"
+            <div class="flex justify-center space-x-4 mt-auto pt-6"> <button id="undoButton"
                         class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-opacity-75 transition duration-200 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed" disabled>
                     &#8678; Undo
                 </button>
@@ -107,6 +140,22 @@
                           class="shadow-sm appearance-none border border-gray-300 rounded-md w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent resize-y flex-1 min-h-[10rem] transition duration-200 ease-in-out"
                           placeholder="Transferred values will appear here."></textarea>
                 <p class="text-gray-600 text-sm mt-2">Value Count: <span id="valueCount" class="font-semibold">0</span></p>
+            </div>
+        </div>
+
+        <div class="flex-1 flex flex-col">
+            <label class="block text-gray-700 text-sm font-semibold mb-2">Export Data Preview:</label>
+            <div id="exportTableContainer" class="export-table-container flex-grow">
+                <table id="exportTable" class="export-table">
+                    <thead>
+                        <tr>
+                            <th>Entered Value</th>
+                            <th>Transferred Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -137,6 +186,8 @@
         const modalMessage = document.getElementById('modalMessage');
         const fetchedDataDisplay = document.getElementById('fetchedDataDisplay');
         const exportExcelButton = document.getElementById('exportExcelButton');
+        const exportTableContainer = document.getElementById('exportTableContainer'); // New container reference
+        const exportTableBody = document.querySelector('#exportTable tbody'); // New table body reference
 
         // Initialize history array and index for undo/redo functionality.
         // Each history state now includes both the textarea content and the transfer log.
@@ -176,6 +227,8 @@
             historyIndex++;
             // Update the disabled state of undo/redo buttons
             updateUndoRedoButtons();
+            // Update the export table display
+            updateExportTable();
         }
 
         /**
@@ -190,6 +243,7 @@
                 currentTransferLog = JSON.parse(JSON.stringify(history[historyIndex].transferLogState)); // Restore transfer log
                 updateValueCount(); // Update the value count display
                 updateUndoRedoButtons(); // Update button states
+                updateExportTable(); // Update the export table display
             }
         }
 
@@ -205,6 +259,7 @@
                 currentTransferLog = JSON.parse(JSON.stringify(history[historyIndex].transferLogState)); // Restore transfer log
                 updateValueCount(); // Update the value count display
                 updateUndoRedoButtons(); // Update button states
+                updateExportTable(); // Update the export table display
             }
         }
 
@@ -346,6 +401,28 @@
             }
         }
 
+        /**
+         * Updates the tabular display of the transfer log in the third section.
+         * Scrolls to the latest entry.
+         */
+        function updateExportTable() {
+            exportTableBody.innerHTML = ''; // Clear existing rows
+
+            currentTransferLog.forEach(entry => {
+                // Only add entries that have both entered and transferred values
+                if (entry.enteredValue && entry.transferredValue) {
+                    const row = exportTableBody.insertRow();
+                    const cell1 = row.insertCell();
+                    const cell2 = row.insertCell();
+                    cell1.textContent = entry.enteredValue;
+                    cell2.textContent = entry.transferredValue;
+                }
+            });
+
+            // Scroll to the bottom to show the latest entry
+            exportTableContainer.scrollTop = exportTableContainer.scrollHeight;
+        }
+
 
         // Event listener for the "Fetch Data" button
         fetchDataButton.addEventListener('click', fetchDataFromPHP);
@@ -356,6 +433,13 @@
             setTimeout(() => {
                 fetchDataFromPHP();
             }, 0);
+        });
+
+        // Event listener for "Enter" key press on inputBox to trigger fetch
+        inputBox.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                fetchDataFromPHP();
+            }
         });
 
         // Event listener for the "Transfer Value" button
@@ -386,7 +470,7 @@
                 fetchedDataDisplay.textContent = ''; // Clear the fetched data display
                 lastFetchedInput = ''; // Clear the last fetched input after transfer
 
-                saveHistory(); // Save the new state to history (includes transfer log)
+                saveHistory(); // Save the new state to history (includes transfer log and updates table)
                 updateValueCount(); // Update the displayed value count
             } else {
                 // If both input and fetched display are empty, show a feedback modal
@@ -413,6 +497,8 @@
         saveHistory();
         // 2. Update the undo/redo button states based on the initial history.
         updateUndoRedoButtons();
+        // 3. Initial update of the export table
+        updateExportTable();
     </script>
 </body>
 </html>
